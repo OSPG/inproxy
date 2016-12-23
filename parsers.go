@@ -45,13 +45,18 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 		for k, v := range *headers {
 			fmt.Println("DEBUG: ", k, " ", v)
 		}
-		break
 	case "HEAD":
+		fallthrough
 	case "POST":
+		fallthrough
 	case "PUT":
+		fallthrough
 	case "DELETE":
+		fallthrough
 	case "CONNECT":
+		fallthrough
 	case "OPTIONS":
+		fallthrough
 	case "TRACE":
 		return nil, nil, errors.New("inproxy: HTTP method not implemented yet")
 	default:
