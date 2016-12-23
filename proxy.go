@@ -108,7 +108,8 @@ func (p *ProxyServer) handleConns() {
 		reader := bufio.NewReader(conn)
 		fmt.Println("INFO: New connection")
 
-		rawReq, request, err := parseRequest(reader)
+		// rawReq, request, err := parseRequest(reader)
+		_, _, err := parseRequest(reader)
 		if err != nil {
 			fmt.Println("ERROR: Error reading the request", err)
 			conn.Close()
