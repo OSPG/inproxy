@@ -115,16 +115,6 @@ func (p *ProxyServer) handleConns() {
 			continue
 		}
 
-		fmt.Println("RAW REQUEST:")
-		fmt.Println(rawReq.String())
-
-		fmt.Println("PARSED REQUEST:")
-		fmt.Println("\tMethod:", request.Method)
-		fmt.Println("\tUrl:   ", request.URL.String())
-		fmt.Println("\tProto: ", request.Proto)
-		fmt.Println("\tHost:  ", request.Host)
-		// ...
-
 		conn.Close()
 	}
 }
