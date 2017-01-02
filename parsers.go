@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // parseRequest accepts a request as bufio.Reader and returns the HTTP request
@@ -38,12 +39,12 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 	case "GET":
 		headers, err := parseHeaders(reader, rawReq)
 		if err != nil {
-			fmt.Println("DEBUG: GET parser error", err)
+			log.Debug("GET parser error: ", err)
 			return nil, nil, errors.New("inproxy: error parsing GET request")
 		}
-		fmt.Println("DEBUG: Parsed headers")
+		log.Debug("Parsed headers")
 		for k, v := range *headers {
-			fmt.Println("DEBUG: ", k, " ", v)
+			log.Debug(k, " ", v)
 		}
 	case "HEAD":
 		fallthrough
@@ -118,9 +119,7 @@ func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, err
 			index := bytes.IndexByte(line, ':')
 
 			if index < 0 {
-				fmt.Println("DEBUG: line: ")
-				fmt.Println(line)
-				fmt.Println(string(line))
+				log.Debugf("%s\n%v\n%s\n", "line: ", line, string(line))
 				return nil, errors.New("inproxy: malformed header line")
 			}
 
@@ -128,7 +127,7 @@ func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, err
 			if key == "" {
 				// field-name can't be empty, we don't raise an error, just
 				// ignore this header.
-				fmt.Println("INFO: Empty field-name in header")
+				log.Info("Empty field-name in header")
 				continue
 			}
 
