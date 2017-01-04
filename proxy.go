@@ -116,12 +116,14 @@ func (p *ProxyServer) handleConns() {
 		log.Info("New connection")
 
 		// rawReq, request, err := parseRequest(reader)
-		_, _, err := parseRequest(reader)
+		rawReq, _, err := parseRequest(reader)
 		if err != nil {
 			log.Error("Could not read the request: ", err)
 			conn.Close()
 			continue
 		}
+
+		log.Debugf("%s", rawReq.Bytes())
 
 		conn.Close()
 	}

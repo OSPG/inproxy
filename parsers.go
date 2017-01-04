@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -35,21 +36,41 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 
 	rawReq.Write(s)
 
+	headers, err := parseHeaders(reader, rawReq)
+	if err != nil {
+		log.Debug("Header parser error: ", err)
+		return nil, nil, errors.New("inproxy: error parsing headers")
+	}
+	log.Debug("Parsed headers")
+	for k, v := range *headers {
+		log.Debug(k, " ", v)
+	}
+
 	switch string(requestLine[0]) {
 	case "GET":
-		headers, err := parseHeaders(reader, rawReq)
-		if err != nil {
-			log.Debug("GET parser error: ", err)
-			return nil, nil, errors.New("inproxy: error parsing GET request")
-		}
-		log.Debug("Parsed headers")
-		for k, v := range *headers {
-			log.Debug(k, " ", v)
-		}
+		log.Debug("GET request")
+		// Do nothing, we just need the headers
 	case "HEAD":
 		fallthrough
 	case "POST":
-		fallthrough
+		log.Debug("POST request")
+		bodyLenStr := headers.Get("Content-Length")
+		if bodyLenStr == "" {
+			// No content-length
+			break
+		}
+
+		bodyLen, err := strconv.Atoi(bodyLenStr)
+		if err != nil {
+			log.Debugf("parseRequest (parsers.go): Atoi fails with content-length %s", err)
+			return nil, nil, errors.New("inproxy: invalid content-length in post request")
+		}
+
+		if bodyLen == 0 {
+			break
+		}
+
+		readBody(reader, rawReq, bodyLen)
 	case "PUT":
 		fallthrough
 	case "DELETE":
@@ -158,10 +179,29 @@ func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, err
 			headers.Add(key, value)
 		}
 
-		// fmt.Println("DEBUG: Read line (string)", string(line))
-		// fmt.Println("DEBUG: Read line ([]byte)", line)
-
 		rawReq.Write(line)
 	}
 	return &headers, nil
+}
+
+func readBody(reader *bufio.Reader, rawReq *bytes.Buffer, len int) error {
+	for i := 0; i < len; i++ {
+		byteToWrite, err := reader.ReadByte()
+		if err != nil {
+			log.Debug("readBody (parsers.go): Error reading byte from reader ", err)
+			log.Debugf("len: %d", len)
+			log.Debugf("rawReq: %s", rawReq.Bytes())
+			return errors.New("inproxy: Can't read byte from body ")
+		}
+		err = rawReq.WriteByte(byteToWrite)
+		if err != nil {
+			log.Debug("readBody (parsers.go): Error writing byte to rawReq ", err)
+			log.Debugf("len: %d", len)
+			log.Debugf("rawReq: %s", rawReq.Bytes())
+			return errors.New("inproxy: Can't write body byte to raw request")
+
+		}
+	}
+
+	return nil
 }
