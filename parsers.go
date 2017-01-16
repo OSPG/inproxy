@@ -17,9 +17,8 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 	rawReq := new(bytes.Buffer)
 
 	// Get first line of the request: GET http://example.com HTTP/1.1
-	// TODO: \r\n instead of \n
 	s, err := reader.ReadBytes('\n')
-	if err != nil {
+	if err != nil || s[len(s)-2] != '\r' {
 		return nil, nil, errors.New("inproxy: error reading request line")
 	}
 
