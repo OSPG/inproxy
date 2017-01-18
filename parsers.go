@@ -18,26 +18,20 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 
 	// Get first line of the request: GET http://example.com HTTP/1.1
 	s, err := reader.ReadBytes('\n')
-	if err != nil || s[len(s)-2] != '\r' {
+	if err != nil { //|| s[len(s)-2] != '\r' {
 		return nil, nil, errors.New("inproxy: error reading request line")
 	}
-
-	// fmt.Println("DEBUG: request line: ", string(s))
+	rawReq.Write(s)
 
 	// Split the line to parse the method, URL, and protocol version
-	// requestLine[0] == Method
-	// requestLine[1] == URL
-	// requestLine[2] == Version
 	requestLine := bytes.Split(s, []byte(" "))
 	if len(requestLine) != 3 {
 		return nil, nil, errors.New("inproxy: invalid request line")
 	}
 
-	rawReq.Write(s)
-
 	headers, err := parseHeaders(reader, rawReq)
 	if err != nil {
-		log.Debug("Header parser error: ", err)
+		log.Debug("parseRequest (parsers.go): header parser error: ", err)
 		return nil, nil, errors.New("inproxy: error parsing headers")
 	}
 	log.Debug("Parsed headers")
@@ -95,8 +89,8 @@ func parseRequest(reader *bufio.Reader) (*bytes.Buffer, *http.Request, error) {
 }
 
 // parseHeaders gets a reader (bufio.Reader) and reads line by line until it
-// receive a blank line ('\r\n'). It updates rawReq with the headers
-// data and returns the parsed headers as *http.Header
+// receive a blank line ('\r\n'). It updates rawReq with the headers data and
+// returns the parsed headers as *http.Header.
 func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, error) {
 	headers := http.Header{}
 	for crlf := false; !crlf; {
@@ -116,34 +110,30 @@ func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, err
 			// RFC 7230 Section 3.2
 
 			// Remove spaces between header field-name and colon, as specified
-			// in RFC 7230 Section 3.2.4
+			// in RFC 7230 Section 3.2.4, just for parsing, do NOT alter the
+			// original raw request.
 			// Host : example.com --> Host: example.com
-			var newLine bytes.Buffer
+			tmpLine := make([]byte, len(line))
+
 			afterColon := false
 			for i := 0; i < len(line); i++ {
 				if (line[i] != ' ' && !afterColon) || afterColon {
-					newLine.WriteByte(line[i])
+					tmpLine[i] = line[i]
 				}
 				if line[i] == ':' {
 					afterColon = true
 				}
 			}
 
-			line = newLine.Bytes()
-
-			var (
-				key   string
-				value string
-			)
-
-			index := bytes.IndexByte(line, ':')
+			index := bytes.IndexByte(tmpLine, ':')
 
 			if index < 0 {
-				log.Debugf("%s\n%v\n%s\n", "line: ", line, string(line))
-				return nil, errors.New("inproxy: malformed header line")
+				// Stop parsing the line
+				log.Debugf("Malformed header line: \n%v\n%s\n", tmpLine, string(tmpLine))
+				continue
 			}
 
-			key = string(line[:index])
+			key := string(tmpLine[:index])
 			if key == "" {
 				// field-name can't be empty, we don't raise an error, just
 				// ignore this header.
@@ -173,16 +163,16 @@ func parseHeaders(reader *bufio.Reader, rawReq *bytes.Buffer) (*http.Header, err
 
 				reverseIndex--
 			}
-			value = string(tmpValue[:reverseIndex])
+			value := string(tmpValue[:reverseIndex])
 
 			headers.Add(key, value)
 		}
-
 		rawReq.Write(line)
 	}
 	return &headers, nil
 }
 
+// readBody reads from reader len bytes, and writes them to to rawReq.
 func readBody(reader *bufio.Reader, rawReq *bytes.Buffer, len int) error {
 	for i := 0; i < len; i++ {
 		byteToWrite, err := reader.ReadByte()
@@ -192,6 +182,7 @@ func readBody(reader *bufio.Reader, rawReq *bytes.Buffer, len int) error {
 			log.Debugf("rawReq: %s", rawReq.Bytes())
 			return errors.New("inproxy: Can't read byte from body ")
 		}
+
 		err = rawReq.WriteByte(byteToWrite)
 		if err != nil {
 			log.Debug("readBody (parsers.go): Error writing byte to rawReq ", err)
