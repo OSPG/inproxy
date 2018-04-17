@@ -65,22 +65,18 @@ func (p *ProxyServer) Serve() error {
 
 	// Anonymous function accepting connections and passing the net.Conn objects
 	// to ProxyServer.handleConn() through the ProxyServer.requestsBuffer chan
-	go func() {
-		for p.running {
-			conn, err := p.listener.Accept()
-			if err != nil {
-				fmt.Println("ERROR: p.listener.Accept(): ", err)
-			} else {
-				// conn variable is sent to the channel only if it's not full
+	for p.running {
+		conn, err := p.listener.Accept()
+		if err != nil {
+			fmt.Println("ERROR: p.listener.Accept(): ", err)
+		} else {
+			go func() {
+				// conn variable is sent to the channel when it is available
 				fmt.Println("Accepting connection")
-				select {
-				case p.requestsBuffer <- conn:
-				default:
-					fmt.Println("ERROR: requests chan is full")
-				}
-			}
+				p.requestsBuffer <- conn
+			}()
 		}
-	}()
+	}
 
 	return nil
 }
