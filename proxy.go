@@ -2,25 +2,35 @@ package inproxy
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
+
+	log "github.com/Sirupsen/logrus"
 )
 
-// Parse HTTP requests
-// https://godoc.org/net/http#ReadRequest
+// Log levels
+const (
+	PanicLevel log.Level = iota
+	ErrorLevel
+	InfoLevel
+	DebugLevel
+)
 
-// TODO: Add proper logging system
+type RequestHandler func(*http.Request, *bytes.Buffer)
 
 // ProxyServer is the struct containing the main elements required by the proxy
 // to run.
 type ProxyServer struct {
-	listener net.Listener
-	Ladress  string
+	// Adress and port to bind,
+	// examples: ":8080", "127.0.0.1:8080", "0.0.0.0:8080".
+	Ladress string
 
+	listener net.Listener
+
+	// True if the Init() method have been called, false if not
 	initialized bool
-	Verbose     bool
 
 	// Buffer where pending requests will wait to be processed, for example
 	// while the user is editing one request.
@@ -32,15 +42,24 @@ type ProxyServer struct {
 	// True if the proxy is listening for connections, false if it isn't.
 	running bool
 
-	// True if the proxy is intercepting, false if it isn't.
-	enabled bool
+	// True if the proxy is intercepting requests , false if it isn't.
+	requestsEnabled bool
 
-	requestHandler func(*http.Request, bufio.Reader) *http.Request
+	// True if the proxy is intercepting responses from the server
+	responseEnabled bool
+
+	// Function called with every incoming valid HTTP request.
+	// Args: Parsed HTTP request (*http.Request), and raw HTTP request
+	// (*bytes.Buffer). The modified raw HTTP request will be sent to the server
+	// any change at the parsed request will be ignored.
+	requestHandler RequestHandler
 }
 
+// Init initializes the main parts of ProxyServer
 func (p *ProxyServer) Init() {
 	p.requestsBufferLen = 100 // Arbitrary
 	p.requestsBuffer = make(chan net.Conn, p.requestsBufferLen)
+
 	p.initialized = true
 }
 
@@ -49,17 +68,16 @@ func (p *ProxyServer) Serve() error {
 		return errors.New("inproxy: Proxy not initialized")
 	}
 
-	fmt.Println("Serving")
+	log.Info("Serving")
 
 	var err error
 	if p.listener, err = net.Listen("tcp", p.Ladress); err != nil {
 		return err
 	}
 
-	fmt.Println("Listener created")
+	log.Info("Listener created")
 
 	p.running = true
-	p.enabled = true
 
 	go p.handleConns()
 
@@ -68,11 +86,11 @@ func (p *ProxyServer) Serve() error {
 	for p.running {
 		conn, err := p.listener.Accept()
 		if err != nil {
-			fmt.Println("ERROR: p.listener.Accept(): ", err)
+			log.Error("ERROR: p.listener.Accept(): ", err)
 		} else {
 			go func() {
 				// conn variable is sent to the channel when it is available
-				fmt.Println("Accepting connection")
+				log.Info("Accepting connection")
 				p.requestsBuffer <- conn
 			}()
 		}
@@ -81,33 +99,53 @@ func (p *ProxyServer) Serve() error {
 	return nil
 }
 
+// handleConns accept connections from the ProxyServer.requestsBuffer chan while
+// the server is running.
+// TODO: keep-alive connections
 func (p *ProxyServer) handleConns() {
-	// TODO: keep-alive connections
-	var conn net.Conn
+	var (
+		conn net.Conn
+	)
 	for p.running {
 		conn = <-p.requestsBuffer
-		fmt.Println("New connection")
 		reader := bufio.NewReader(conn)
-		request, err := http.ReadRequest(reader)
-		if err != nil {
-			fmt.Println("ERROR: Can't parse request", err)
-		} else {
-			fmt.Println("SUCCESS: HTTP request parsed:")
-			fmt.Println("\rMethod:", request.Method)
-			fmt.Println("\rUrl:   ", request.URL.String())
-			fmt.Println("\rProto: ", request.Proto)
-			fmt.Println("\rHost:  ", request.Host)
-			// ...
 
+		log.Info("New connection")
+
+		// rawReq, request, err := parseRequest(reader)
+		rawReq, _, err := parseRequest(reader)
+		if err != nil {
+			log.Error("Could not read the request: ", err)
+			conn.Close()
+			continue
 		}
+
+		log.Debugf("%s", rawReq.Bytes())
+
 		conn.Close()
 	}
 }
 
-func NewProxy(laddr string, verbose bool) *ProxyServer {
+func (p *ProxyServer) SetRequestsHandler(handler RequestHandler) {
+	p.requestHandler = handler
+	p.requestsEnabled = true
+}
+
+func NewProxy(laddr string, loglevel log.Level) *ProxyServer {
+	if loglevel == DebugLevel {
+		log.SetLevel(log.DebugLevel)
+	} else if loglevel == InfoLevel {
+		log.SetLevel(log.InfoLevel)
+	} else if loglevel == ErrorLevel {
+		log.SetLevel(log.ErrorLevel)
+	} else if loglevel == PanicLevel {
+		log.SetLevel(log.PanicLevel)
+	}
+
 	proxy := &ProxyServer{
 		Ladress: laddr,
-		Verbose: verbose}
+	}
+
 	proxy.Init()
 	return proxy
 }
