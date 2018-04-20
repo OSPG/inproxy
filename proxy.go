@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -38,6 +39,8 @@ type ProxyServer struct {
 
 	// Length of requestsBuffer
 	requestsBufferLen int
+	// Seconds of time out
+	requestTimeOut int
 
 	// True if the proxy is listening for connections, false if it isn't.
 	running bool
@@ -58,6 +61,7 @@ type ProxyServer struct {
 // Init initializes the main parts of ProxyServer
 func (p *ProxyServer) Init() {
 	p.requestsBufferLen = 100 // Arbitrary
+	p.requestTimeOut = 3
 	p.requestsBuffer = make(chan net.Conn, p.requestsBufferLen)
 
 	p.initialized = true
@@ -91,7 +95,12 @@ func (p *ProxyServer) Serve() error {
 			go func() {
 				// conn variable is sent to the channel when it is available
 				log.Info("Accepting connection")
-				p.requestsBuffer <- conn
+				select {
+					case p.requestsBuffer <- conn:
+						break
+					case <-time.After(p.requestTimeOut * time.Second):
+						log.Info("Time out")
+				}
 			}()
 		}
 	}
